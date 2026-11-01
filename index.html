@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#061f19"><title>مسجد صيدور الكبير</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#164d3c,#061b16 70%);color:#fff;font-family:Tahoma,Arial,sans-serif;min-height:100vh}
+.wrap{padding:2.3vh 3vw;height:100vh;display:flex;flex-direction:column;gap:1.5vh}
+header{text-align:center;border-bottom:2px solid #bda45e;padding-bottom:1vh}
+h1{font-size:clamp(28px,4vw,58px);margin:0;color:#f0d98a} .sub{font-size:clamp(14px,1.5vw,22px);color:#c9d8cf;margin-top:6px}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:clamp(18px,2vw,30px);color:#f7e8b2}
+.clock{font-size:clamp(30px,4vw,58px);font-weight:bold;direction:ltr}
+.prayers{display:grid;grid-template-columns:repeat(5,1fr);gap:1vw;flex:1;align-items:stretch}
+.prayer{background:linear-gradient(160deg,#174c3c,#0b2b22);border:1px solid #b99d55;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3vh;box-shadow:0 6px 22px #0005}
+.prayer.active{background:linear-gradient(160deg,#947a39,#4a3c1b);transform:scale(1.02)}
+.name{font-size:clamp(22px,2.5vw,38px);color:#f4dc91;font-weight:bold}
+.time{font-size:clamp(28px,3.5vw,52px);font-weight:bold;direction:ltr}
+.iq{font-size:clamp(14px,1.5vw,22px);color:#d9e5dc}
+.bottom{display:flex;justify-content:space-between;align-items:center;gap:2vw}
+.next{font-size:clamp(18px,2vw,30px);color:#f3df9e}
+.count{font-size:clamp(24px,3vw,44px);font-weight:bold;direction:ltr;color:#fff}
+.note{text-align:center;color:#b9c9be;font-size:clamp(12px,1.1vw,17px)}
+.controls{position:fixed;left:12px;bottom:10px;opacity:.12}.controls:hover{opacity:1}
+button{background:#b99d55;border:0;border-radius:8px;padding:8px 14px;font-size:16px}
+#settings{display:none;position:fixed;inset:5%;background:#f7f4e9;color:#18251e;border-radius:16px;padding:20px;overflow:auto;z-index:5}
+#settings h2{margin-top:0}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #ccc;text-align:center}input{width:95px;padding:8px;font-size:18px}
+.actions{display:flex;gap:12px;margin-top:15px;flex-wrap:wrap}
+</style></head><body><div class="wrap">
+<header><h1>مسجد صيدور الكبير</h1><div class="sub">صيدور – لواء الوسطية – محافظة إربد – المملكة الأردنية الهاشمية</div></header>
+<div class="top"><div id="date"></div><div class="clock" id="clock">--:--:--</div></div>
+<section class="prayers" id="prayers"></section>
+<div class="bottom"><div class="next" id="next">الصلاة القادمة: --</div><div class="count" id="count">--:--:--</div></div>
+<div class="note">اللهم اجعل الصلاة قرة أعيننا • المواقيت محسوبة فلكياً وقابلة للضبط وفق تقويم وزارة الأوقاف المحلي</div>
+</div>
+<div class="controls"><button onclick="openSettings()">الإعدادات</button></div>
+<div id="settings"><h2>إعدادات المسجد</h2><p>يمكن تعديل دقائق الإقامة وإزاحة وقت الأذان لمطابقة التقويم المعتمد في المسجد.</p>
+<table><thead><tr><th>الصلاة</th><th>الإقامة بعد الأذان (دقيقة)</th><th>تعديل الأذان (+/- دقيقة)</th></tr></thead><tbody id="rows"></tbody></table>
+<div class="actions"><button onclick="saveSettings()">حفظ</button><button onclick="closeSettings()">إغلاق</button><button onclick="resetSettings()">استعادة الافتراضي</button></div>
+<p>رمز فتح الإعدادات الافتراضي: <b>1234</b></p></div>
+<script>
+const names=['الفجر','الشروق','الظهر','العصر','المغرب','العشاء'];
+const keys=['fajr','sunrise','dhuhr','asr','maghrib','isha'];
+const defaults={fajr:25,sunrise:0,dhuhr:15,asr:15,maghrib:10,isha:15};
+const offsets={fajr:0,sunrise:0,dhuhr:0,asr:0,maghrib:0,isha:0};
+let cfg=JSON.parse(localStorage.getItem('saidourCfg')||'null')||{iq:defaults,off:offsets};
+const lat=32.6134, lon=35.6943;
+function rad(x){return x*Math.PI/180} function deg(x){return x*180/Math.PI}
+function dayOfYear(d){let s=new Date(d.getFullYear(),0,0);return Math.floor((d-s)/86400000)}
+function norm(x){return (x%360+360)%360}
+function solar(date){
+ let N=dayOfYear(date), g=rad(360/365*(N-1)), q=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+ let eq=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)-0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+ let tz=-new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTimezoneOffset()/60;
+ // use Jordan civil timezone via device timezone; if device not in Jordan, force Asia/Amman using UTC+3
+ let localOffset=3;
+ let solarNoon=720-4*lon-eq+localOffset*60;
+ function hour(angle){let c=(Math.sin(rad(angle))-Math.sin(rad(-0.833))-Math.sin(rad(lat))*Math.sin(q))/(Math.cos(rad(lat))*Math.cos(q));return Math.acos(Math.max(-1,Math.min(1,c)))*deg(1)*4}
+ let noon=solarNoon, sunrise=noon-hour(-0.833), sunset=noon+hour(-0.833);
+ function twilight(a,morning){let c=(Math.sin(rad(-a))-Math.sin(rad(lat))*Math.sin(q))/(Math.cos(rad(lat))*Math.cos(q));let h=Math.acos(Math.max(-1,Math.min(1,c)))*deg(1)*4;return morning?noon-h:noon+h}
+ let fajr=twilight(18,true), isha=twilight(17,false);
+ // Asr shadow factor 1 (standard)
+ let asrAlt=deg(Math.atan(1/(1+Math.tan(Math.abs(rad(lat)-q)))));
+ let asr=noon+hour(asrAlt);
+ return {fajr,sunrise,dhuhr:noon+3,asr,maghrib:sunset,isha};
+}
+function fmt(min){min=((Math.round(min)%1440)+1440)%1440;return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0')}
+function parseToday(m){let d=new Date();d.setHours(0,0,0,0);d.setMinutes(Math.round(m));return d}
+function update(){
+ let now=new Date(), t=now.getHours()*60+now.getMinutes()+now.getSeconds()/60;
+ document.getElementById('clock').textContent=now.toLocaleTimeString('en-GB');
+ document.getElementById('date').textContent=now.toLocaleDateString('ar-JO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+ let p=solar(now), arr=keys.map(k=>p[k]+(cfg.off[k]||0));
+ let html=''; keys.forEach((k,i)=>{let tm=fmt(arr[i]);let iq=(cfg.iq[k]||0);html+=`<div class="prayer" id="p${i}"><div class="name">${names[i]}</div><div class="time">${tm}</div><div class="iq">${i===1?'الشروق':'الإقامة بعد '+iq+' دقيقة'}</div></div>`});
+ document.getElementById('prayers').innerHTML=html;
+ let prayerIndices=[0,2,3,4,5], upcoming=prayerIndices.find(i=>arr[i]>t);
+ let label, target;
+ if(upcoming===undefined){label='الفجر';target=arr[0]+1440;}else{label=names[upcoming];target=arr[upcoming];document.getElementById('p'+upcoming).classList.add('active')}
+ let diff=Math.max(0,Math.floor((target-t)*60)), hh=Math.floor(diff/3600),mm=Math.floor(diff%3600/60),ss=diff%60;
+ document.getElementById('next').textContent='الصلاة القادمة: '+label;
+ document.getElementById('count').textContent=[hh,mm,ss].map(x=>String(x).padStart(2,'0')).join(':');
+}
+function openSettings(){let pin=prompt('أدخل رمز الإعدادات');if(pin!=='1234'){alert('رمز غير صحيح');return}
+ document.getElementById('rows').innerHTML=keys.map((k,i)=>`<tr><td>${names[i]}</td><td><input id="iq_${k}" type="number" min="0" max="90" value="${cfg.iq[k]||0}" ${i===1?'disabled':''}></td><td><input id="off_${k}" type="number" min="-30" max="30" value="${cfg.off[k]||0}"></td></tr>`).join('');
+ document.getElementById('settings').style.display='block'}
+function saveSettings(){keys.forEach(k=>{let a=document.getElementById('iq_'+k),b=document.getElementById('off_'+k);if(a)cfg.iq[k]=Number(a.value);if(b)cfg.off[k]=Number(b.value)});localStorage.setItem('saidourCfg',JSON.stringify(cfg));closeSettings();update()}
+function resetSettings(){if(confirm('استعادة الإعدادات الافتراضية؟')){cfg={iq:{...defaults},off:{...offsets}};localStorage.setItem('saidourCfg',JSON.stringify(cfg));openSettings()}}
+function closeSettings(){document.getElementById('settings').style.display='none'}
+setInterval(update,1000);update();
+</script></body></html>
